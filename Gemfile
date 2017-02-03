@@ -6,6 +6,8 @@ def ruby_version?(constraint)
   Gem::Dependency.new('', constraint).match?('', RUBY_VERSION)
 end
 
+gem 'mmap2'
+
 group :test do
   gem 'coveralls'
   gem 'json', '< 2.0' if ruby_version?('< 2.0')

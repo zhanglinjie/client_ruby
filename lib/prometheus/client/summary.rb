@@ -14,14 +14,21 @@ module Prometheus
       class Value < Hash
         attr_accessor :sum, :total
 
-        def initialize(estimator)
-          @sum = estimator.sum
-          @total = estimator.observations
+        def initialize(name, labels, estimator)
+          @sum = ValueClass.new(type, name, name + '_sum', labels, estimator.sum)
+          @total = ValueClass.new(type, name, name + '_count', labels, estimator.observations)
 
           estimator.invariants.each do |invariant|
-            self[invariant.quantile] = estimator.query(invariant.quantile)
+            self[invariant.quantile] = ValueClass.new(type, name, name, labels, estimator.query(invariant.quantile))
           end
         end
+      end
+
+      def initialize(name, docstring, base_labels = {}, multiprocess_mode)
+        if ValueType.multiprocess
+          raise ArgumentError, "Multiprocess mode does not support Summary metrics"
+        end
+        super(name, docstring, base_labels)
       end
 
       def type
@@ -56,7 +63,7 @@ module Prometheus
 
       private
 
-      def default
+      def default(labels)
         Quantile::Estimator.new
       end
     end

@@ -1,5 +1,7 @@
 # encoding: UTF-8
 
+require 'prometheus/client/valuetype'
+
 module Prometheus
   module Client
     module Formats
@@ -36,6 +38,106 @@ module Prometheus
           (lines << nil).join(DELIMITER)
         end
 
+        def self.marshal_multiprocess(path=ENV['prometheus_multiproc_dir'])
+          metrics = {}
+          Dir.glob(File.join(path, "*.db")).each do |f|
+            parts = File.basename(f).split("_")
+            type = parts[0].to_sym
+            d = MmapedDict.new(f)
+            d.all_values.sort.each do |key, value|
+              metric_name, name, labelnames, labelvalues = JSON.parse(key)
+              metric = metrics.fetch(metric_name, {
+                metric_name: metric_name,
+                help: 'Multiprocess metric',
+                type: type,
+                samples: [],
+              })
+              if type == :gauge
+                pid = parts[2][0..-4]
+                metric[:multiprocess_mode] = parts[1]
+                metric[:samples] += [[name, labelnames.zip(labelvalues) + [['pid', pid]], value]]
+              else
+                # The duplicates and labels are fixed in the next for.
+                metric[:samples] += [[name, labelnames.zip(labelvalues), value]]
+              end
+              metrics[metric_name] = metric
+            end
+            d.close
+          end
+
+          metrics.each_value do |metric|
+            samples = {}
+            buckets = {}
+            metric[:samples].each do |name, labels, value|
+              case metric[:type]
+              when :gauge
+                without_pid = labels.select{ |l| l[0] != 'pid' }
+                case metric[:multiprocess_mode]
+                when 'min'
+                  s = samples.fetch([name, without_pid], value)
+                  samples[[name, without_pid]] = [s, value].min
+                when 'max'
+                  s = samples.fetch([name, without_pid], value)
+                  samples[[name, without_pid]] = [s, value].max
+                when 'livesum'
+                  s = samples.fetch([name, without_pid], 0.0)
+                  samples[[name, without_pid]] = s + value
+                else # all/liveall
+                  samples[[name, labels]] = value
+                end
+              when :histogram
+                bucket = labels.select{|l| l[0] == 'le' }.map {|k, v| v.to_f}.first
+                if bucket
+                  without_le = labels.select{ |l| l[0] != 'le' }
+                  b = buckets.fetch(without_le, {})
+                  v = b.fetch(bucket, 0.0) + value
+                  if !buckets.has_key?(without_le)
+                    buckets[without_le] = {}
+                  end
+                  buckets[without_le][bucket] = v
+                else
+                  s = samples.fetch([name, labels], 0.0)
+                  samples[[name, labels]] = s + value
+                end
+              else
+                # Counter and Summary.
+                s = samples.fetch([name, labels], 0.0)
+                samples[[name, labels]] = s + value
+              end
+            end
+
+            if metric[:type] == :histogram
+              buckets.each do |labels, values|
+                values.sort.each do |bucket, value|
+                  samples[[metric[:metric_name] + '_bucket', labels + [['le', bucket.to_s]]]] = value
+                end
+                inf = samples[[metric[:metric_name] + '_count', labels]]
+                samples[[metric[:metric_name] + '_bucket', labels + [['le', '+Inf']]]] = inf
+              end
+            end
+
+            metric[:samples] = samples.map do |name_labels, value|
+              name, labels = name_labels
+              [name, labels.to_h, value]
+            end
+          end
+
+          output = ''
+          metrics.each do |name, metric|
+            output += "# HELP #{name} #{metric[:help]}\n"
+            output += "# TYPE #{name} #{metric[:type].to_s}\n"
+            metric[:samples].each do |metric_name, labels, value|
+              if !labels.empty?
+                labelstr = '{' + labels.sort.map { |k, v| "#{k}='#{v}'" }.join(',') + '}'
+              else
+                labelstr = ''
+              end
+              output += "#{metric_name}#{labelstr} #{value}\n"
+            end
+          end
+          output
+        end
+
         class << self
           private
 
@@ -47,29 +149,29 @@ module Prometheus
             elsif metric.type == :histogram
               histogram(metric.name, set, value, &block)
             else
-              yield metric(metric.name, labels(set), value)
+              yield metric(metric.name, labels(set), value.get)
             end
           end
 
           def summary(name, set, value)
             value.each do |q, v|
-              yield metric(name, labels(set.merge(quantile: q)), v)
+              yield metric(name, labels(set.merge(quantile: q)), v.get)
             end
 
             l = labels(set)
-            yield metric("#{name}_sum", l, value.sum)
-            yield metric("#{name}_count", l, value.total)
+            yield metric("#{name}_sum", l, value.sum.get)
+            yield metric("#{name}_count", l, value.total.get)
           end
 
           def histogram(name, set, value)
             value.each do |q, v|
-              yield metric(name, labels(set.merge(le: q)), v)
+              yield metric(name, labels(set.merge(le: q)), v.get)
             end
-            yield metric(name, labels(set.merge(le: '+Inf')), value.total)
+            yield metric(name, labels(set.merge(le: '+Inf')), value.total.get)
 
             l = labels(set)
-            yield metric("#{name}_sum", l, value.sum)
-            yield metric("#{name}_count", l, value.total)
+            yield metric("#{name}_sum", l, value.sum.get)
+            yield metric("#{name}_count", l, value.total.get)
           end
 
           def metric(name, labels, value)

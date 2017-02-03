@@ -2,6 +2,7 @@
 
 require 'thread'
 require 'prometheus/client/label_set_validator'
+require 'prometheus/client/valuetype'
 
 module Prometheus
   module Client
@@ -10,9 +11,13 @@ module Prometheus
       attr_reader :name, :docstring, :base_labels
 
       def initialize(name, docstring, base_labels = {})
+        if ValueClass.multiprocess and !base_labels.empty?
+          raise ArgumentError, 'Multiprocess mode does not support base labels'
+        end
+
         @mutex = Mutex.new
         @validator = LabelSetValidator.new
-        @values = Hash.new { |hash, key| hash[key] = default }
+        @values = Hash.new { |hash, key| hash[key] = default(key) }
 
         validate_name(name)
         validate_docstring(docstring)
@@ -27,7 +32,7 @@ module Prometheus
       def get(labels = {})
         @validator.valid?(labels)
 
-        @values[labels]
+        @values[labels].get
       end
 
       # Returns all label sets with their values
@@ -41,8 +46,8 @@ module Prometheus
 
       private
 
-      def default
-        nil
+      def default(labels)
+        ValueClass.new(type, @name, @name, labels)
       end
 
       def validate_name(name)

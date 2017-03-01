@@ -86,7 +86,7 @@ module Prometheus
                   samples[[name, labels]] = value
                 end
               when :histogram
-                bucket = labels.select{|l| l[0] == 'le' }.map {|k, v| v.to_f}.first
+                bucket = labels.select{|l| l[0] == 'le' }.map { |k, v| v.to_f }.first
                 if bucket
                   without_le = labels.select{ |l| l[0] != 'le' }
                   b = buckets.fetch(without_le, {})
@@ -154,24 +154,24 @@ module Prometheus
           end
 
           def summary(name, set, value)
-            value.each do |q, v|
-              yield metric(name, labels(set.merge(quantile: q)), v.get)
+            value.get.each do |q, v|
+              yield metric(name, labels(set.merge(quantile: q)), v)
             end
 
             l = labels(set)
-            yield metric("#{name}_sum", l, value.sum.get)
-            yield metric("#{name}_count", l, value.total.get)
+            yield metric("#{name}_sum", l, value.get.sum)
+            yield metric("#{name}_count", l, value.get.total)
           end
 
           def histogram(name, set, value)
-            value.each do |q, v|
-              yield metric(name, labels(set.merge(le: q)), v.get)
+            value.get.each do |q, v|
+              yield metric(name, labels(set.merge(le: q)), v)
             end
-            yield metric(name, labels(set.merge(le: '+Inf')), value.total.get)
+            yield metric(name, labels(set.merge(le: '+Inf')), value.get.total)
 
             l = labels(set)
-            yield metric("#{name}_sum", l, value.sum.get)
-            yield metric("#{name}_count", l, value.total.get)
+            yield metric("#{name}_sum", l, value.get.sum)
+            yield metric("#{name}_count", l, value.get.total)
           end
 
           def metric(name, labels, value)

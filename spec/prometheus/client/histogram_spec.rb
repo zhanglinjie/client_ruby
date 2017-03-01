@@ -24,7 +24,7 @@ describe Prometheus::Client::Histogram do
     it 'records the given value' do
       expect do
         histogram.observe({}, 5)
-      end.to change { histogram.get }
+      end.to change { histogram.get.map { |k, v| v.get } }
     end
 
     it 'raise error for le labels' do
@@ -43,18 +43,18 @@ describe Prometheus::Client::Histogram do
     end
 
     it 'returns a set of buckets values' do
-      expect(histogram.get(foo: 'bar')).to eql(2.5 => 0.0, 5 => 2.0, 10 => 3.0)
+      expect(histogram.get(foo: 'bar').get).to eql(2.5 => 0.0, 5 => 2.0, 10 => 3.0)
     end
 
     it 'returns a value which responds to #sum and #total' do
       value = histogram.get(foo: 'bar')
 
-      expect(value.sum).to eql(25.2)
-      expect(value.total).to eql(4.0)
+      expect(value.sum.get).to eql(25.2)
+      expect(value.total.get).to eql(4.0)
     end
 
     it 'uses zero as default value' do
-      expect(histogram.get({})).to eql(2.5 => 0.0, 5 => 0.0, 10 => 0.0)
+      expect(histogram.get({}).get).to eql(2.5 => 0.0, 5 => 0.0, 10 => 0.0)
     end
   end
 
@@ -63,7 +63,9 @@ describe Prometheus::Client::Histogram do
       histogram.observe({ status: 'bar' }, 3)
       histogram.observe({ status: 'foo' }, 6)
 
-      expect(histogram.values).to eql(
+      values = histogram.values.inject({}) { |h, (k, v)| h[k] = v.get; h }
+
+      expect(values).to eql(
         { status: 'bar' } => { 2.5 => 0.0, 5 => 1.0, 10 => 1.0 },
         { status: 'foo' } => { 2.5 => 0.0, 5 => 0.0, 10 => 1.0 },
       )

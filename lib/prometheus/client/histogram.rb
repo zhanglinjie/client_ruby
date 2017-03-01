@@ -31,7 +31,7 @@ module Prometheus
           end
         end
 
-        def get()
+        def get
           hash = {}
           each_key do |bucket|
             hash[bucket] = self[bucket].get()

@@ -5,6 +5,7 @@ require 'prometheus/client/formats/text.rb'
 require 'pp'
 
 prometheus = Prometheus::Client.registry
+Prometheus::Client::MmapedValue.set_pid(1)
 
 counter1 = Prometheus::Client::Counter.new(:mycounter, 'Example counter')
 counter2 = Prometheus::Client::Counter.new(:othercounter, 'Other counter')

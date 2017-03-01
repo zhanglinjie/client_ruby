@@ -7,28 +7,28 @@ describe Prometheus::Client::Counter do
   let(:counter) { Prometheus::Client::Counter.new(:foo, 'foo description') }
 
   it_behaves_like Prometheus::Client::Metric do
-    let(:type) { Float }
+    let(:type) { Prometheus::Client::ValueClass }
   end
 
   describe '#increment' do
     it 'increments the counter' do
       expect do
         counter.increment
-      end.to change { counter.get }.by(1.0)
+      end.to change { counter.get.get }.by(1.0)
     end
 
     it 'increments the counter for a given label set' do
       expect do
         expect do
           counter.increment(test: 'label')
-        end.to change { counter.get(test: 'label') }.by(1.0)
-      end.to_not change { counter.get }
+        end.to change { counter.get(test: 'label').get }.by(1.0)
+      end.to_not change { counter.get.get }
     end
 
     it 'increments the counter by a given value' do
       expect do
         counter.increment({}, 5)
-      end.to change { counter.get }.by(5.0)
+      end.to change { counter.get.get }.by(5.0)
     end
 
     it 'raises an ArgumentError on negative increments' do
@@ -48,7 +48,7 @@ describe Prometheus::Client::Counter do
             10.times { counter.increment }
           end
         end.each(&:join)
-      end.to change { counter.get }.by(100.0)
+      end.to change { counter.get.get }.by(100.0)
     end
   end
 end

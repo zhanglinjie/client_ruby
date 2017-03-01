@@ -27,18 +27,20 @@ describe Prometheus::Client::Summary do
     end
 
     it 'returns a set of quantile values' do
-      expect(summary.get(foo: 'bar')).to eql(0.5 => 4, 0.9 => 5.2, 0.99 => 5.2)
+      values = summary.get(foo: 'bar').inject({}) { |h, (k, v)| h[k] = v.get; h }
+      expect(values).to eql(0.5 => 4, 0.9 => 5.2, 0.99 => 5.2)
     end
 
     it 'returns a value which responds to #sum and #total' do
       value = summary.get(foo: 'bar')
 
-      expect(value.sum).to eql(25.2)
-      expect(value.total).to eql(4)
+      expect(value.sum.get).to eql(25.2)
+      expect(value.total.get).to eql(4)
     end
 
     it 'uses nil as default value' do
-      expect(summary.get({})).to eql(0.5 => nil, 0.9 => nil, 0.99 => nil)
+      values = summary.get({}).inject({}) { |h, (k, v)| h[k] = v.get; h }
+      expect(values).to eql(0.5 => nil, 0.9 => nil, 0.99 => nil)
     end
   end
 
@@ -47,7 +49,9 @@ describe Prometheus::Client::Summary do
       summary.observe({ status: 'bar' }, 3)
       summary.observe({ status: 'foo' }, 5)
 
-      expect(summary.values).to eql(
+      values = summary.values.inject({}) { |h, (k, v)| h[k] = v.get; h }
+
+      expect(values).to eql(
         { status: 'bar' } => { 0.5 => 3, 0.9 => 3, 0.99 => 3 },
         { status: 'foo' } => { 0.5 => 5, 0.9 => 5, 0.99 => 5 },
       )

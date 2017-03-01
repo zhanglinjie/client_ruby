@@ -32,7 +32,7 @@ module Prometheus
       def get(labels = {})
         @validator.valid?(labels)
 
-        @values[labels].get
+        @values[labels]
       end
 
       # Returns all label sets with their values

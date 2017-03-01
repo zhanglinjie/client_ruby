@@ -111,7 +111,7 @@ end
 #
 # TODO(julius): dealing with Mmap.new, truncate etc. errors?
 class MmapedDict
-  @@INITIAL_MMAP_SIZE = 1024*1024
+  INITIAL_MMAP_SIZE = 1024*1024
 
   attr_reader :m, :capacity, :used, :positions
 
@@ -119,7 +119,7 @@ class MmapedDict
     @mutex = Mutex.new
     @f = File.open(filename, 'a+b')
     if @f.size == 0
-      @f.truncate(@@INITIAL_MMAP_SIZE)
+      @f.truncate(INITIAL_MMAP_SIZE)
     end
     @capacity = @f.size
     @m = Mmap.new(filename, 'rw', Mmap::MAP_SHARED)
@@ -150,7 +150,7 @@ class MmapedDict
     end
     pos = @positions[key]
     # We assume that reading from an 8 byte aligned value is atomic.
-    @m[pos..pos+7].unpack('d')[0]
+    @m[pos..pos + 7].unpack('d')[0]
   end
 
   def write_value(key, value)
@@ -161,10 +161,10 @@ class MmapedDict
     end
     pos = @positions[key]
     # We assume that writing to an 8 byte aligned value is atomic.
-    @m[pos..pos+7] = [value].pack('d')
+    @m[pos..pos + 7] = [value].pack('d')
   end
 
-  def close()
+  def close
     @m.munmap
     @f.close
   end
@@ -194,12 +194,12 @@ class MmapedDict
     pos = 8
     values = []
     while pos < @used
-      encoded_len = @m[pos..(pos+3)].unpack('l')[0]
+      encoded_len = @m[pos..(pos + 3)].unpack('l')[0]
       pos += 4
-      encoded = @m[pos..(pos+encoded_len-1)].unpack("A#{encoded_len}")[0]
+      encoded = @m[pos..(pos+encoded_len - 1)].unpack("A#{encoded_len}")[0]
       padded_len = encoded_len + (8 - (encoded_len + 4) % 8)
       pos += padded_len
-      value = @m[pos..(pos+7)].unpack('d')[0]
+      value = @m[pos..(pos + 7)].unpack('d')[0]
       values << [encoded, value, pos]
       pos += 8
     end

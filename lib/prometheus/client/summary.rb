@@ -14,18 +14,26 @@ module Prometheus
       class Value < Hash
         attr_accessor :sum, :total
 
-        def initialize(name, labels, estimator)
-          @sum = ValueClass.new(type, name, name + '_sum', labels, estimator.sum)
-          @total = ValueClass.new(type, name, name + '_count', labels, estimator.observations)
+        def initialize(type, name, labels, estimator)
+          @sum = ValueClass.new(type, name, name.to_s + '_sum', labels, estimator.sum)
+          @total = ValueClass.new(type, name, name.to_s + '_count', labels, estimator.observations)
 
           estimator.invariants.each do |invariant|
             self[invariant.quantile] = ValueClass.new(type, name, name, labels, estimator.query(invariant.quantile))
           end
         end
+
+        def get
+          hash = {}
+          each_key do |bucket|
+            hash[bucket] = self[bucket].get()
+          end
+          hash
+        end
       end
 
-      def initialize(name, docstring, base_labels = {}, multiprocess_mode)
-        if ValueType.multiprocess
+      def initialize(name, docstring, base_labels = {})
+        if ValueClass.multiprocess
           raise ArgumentError, "Multiprocess mode does not support Summary metrics"
         end
         super(name, docstring, base_labels)
@@ -48,7 +56,7 @@ module Prometheus
         @validator.valid?(labels)
 
         synchronize do
-          Value.new(@values[labels])
+          Value.new(type, @name, labels, @values[labels])
         end
       end
 
@@ -56,7 +64,7 @@ module Prometheus
       def values
         synchronize do
           @values.each_with_object({}) do |(labels, value), memo|
-            memo[labels] = Value.new(value)
+            memo[labels] = Value.new(type, @name, labels, value)
           end
         end
       end

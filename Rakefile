@@ -5,7 +5,8 @@ require 'rspec/core/rake_task'
 require 'rubocop/rake_task'
 
 desc 'Default: run specs'
-task default: [:spec, :rubocop]
+#task default: [:spec, :rubocop]
+task default: [:spec]
 
 # test alias
 task test: :spec

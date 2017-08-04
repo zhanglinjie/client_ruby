@@ -14,13 +14,7 @@ module Prometheus
         raise ArgumentError, 'increment must be a non-negative number' if by < 0
 
         label_set = label_set_for(labels)
-        synchronize { @values[label_set] += by }
-      end
-
-      private
-
-      def default
-        0.0
+        set(label_set, get(label_set) + by)
       end
     end
   end

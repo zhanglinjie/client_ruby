@@ -14,6 +14,7 @@ module Prometheus
       class ReservedLabelError < LabelSetError; end
 
       def initialize
+        @redis = ::Prometheus::Client.configuration.redis
         @validated = {}
       end
 
@@ -30,18 +31,37 @@ module Prometheus
       end
 
       def validate(labels)
-        return labels if @validated.key?(labels.hash)
+        sorted_labels = labels.to_a.sort_by{|k| k[0]}.to_h
+        key = sorted_labels.hash
+        return sorted_labels if key_exists?(key)
 
-        valid?(labels)
+        valid?(sorted_labels)
 
-        unless @validated.empty? || match?(labels, @validated.first.last)
-          raise InvalidLabelSetError, 'labels must have the same signature'
-        end
+        # unless @validated.empty? || match?(labels, @validated.first.last)
+        #   raise InvalidLabelSetError, 'labels must have the same signature'
+        # end
 
-        @validated[labels.hash] = labels
+        set_key(key, sorted_labels)
+        sorted_labels
       end
 
       private
+
+      def key_exists?(key)
+        if @redis.present?
+          @redis.hexists("prometheus_validated_keys", key)
+        else
+          @validated.key?(key)
+        end
+      end
+
+      def set_key(key, labels)
+        if @redis.present?
+          @redis.hset("prometheus_validated_keys", key, labels.to_json)
+        else
+          @validated[key] = labels
+        end
+      end
 
       def match?(a, b)
         a.keys.sort == b.keys.sort

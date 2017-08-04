@@ -2,6 +2,7 @@
 
 require 'thread'
 require 'prometheus/client/label_set_validator'
+require 'oj'
 
 module Prometheus
   module Client
@@ -21,20 +22,38 @@ module Prometheus
         @name = name
         @docstring = docstring
         @base_labels = base_labels
+
+        @redis = ::Prometheus::Client.configuration.redis
       end
 
       # Returns the value for the given label set
       def get(labels = {})
         @validator.valid?(labels)
+        if @redis.present?
+          @redis.hget(name, labels.to_json).to_f
+        else
+          @values[labels] || default
+        end
+      end
 
-        @values[labels]
+      def set(labels, value)
+        if @redis.present?
+          @redis.hset(name, labels.to_json, value)
+        else
+          synchronize { @values[labels] = value }
+        end
       end
 
       # Returns all label sets with their values
       def values
-        synchronize do
-          @values.each_with_object({}) do |(labels, value), memo|
-            memo[labels] = value
+        if @redis.present?
+          all = @redis.hgetall(name)
+          all.map { |key, value| [Oj.load(key).symbolize_keys, value] }.to_h
+        else
+          synchronize do
+            @values.each_with_object({}) do |(labels, value), memo|
+              memo[labels] = value
+            end
           end
         end
       end

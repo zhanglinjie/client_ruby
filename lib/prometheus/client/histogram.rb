@@ -1,6 +1,7 @@
 # encoding: UTF-8
 
 require 'prometheus/client/metric'
+require "oj"
 
 module Prometheus
   module Client
@@ -31,6 +32,18 @@ module Prometheus
         end
       end
 
+      class ValueInRedis < Hash
+        attr_accessor :sum, :total
+        def initialize(value)
+          object = Oj.load(value)
+          @sum = object["sum"]
+          @total = object["total"]
+          object.except("sum", "total").keys.each do |bucket|
+            self[bucket.to_f] = object[bucket]
+          end
+        end
+      end
+
       # DEFAULT_BUCKETS are the default Histogram buckets. The default buckets
       # are tailored to broadly measure the response time (in seconds) of a
       # network service. (From DefBuckets client_golang)
@@ -56,14 +69,41 @@ module Prometheus
         end
 
         label_set = label_set_for(labels)
-        synchronize { @values[label_set].observe(value) }
+        if @redis.present?
+          object = Oj.load(@redis.hget(name, label_set.to_json) || "{}")
+          object["sum"] ||= 0.0
+          object["total"] ||= 0.0
+          object["sum"] += value
+          object["total"] += 1
+          @buckets.each do |bucket|
+            object[bucket.to_s] ||= 0.0
+            object[bucket.to_s] += 1 if value <= bucket
+          end
+          @redis.hset(name, label_set.to_json, object.to_json)
+        else
+          synchronize {
+            @values[label_set] ||= Value.new(@buckets)
+            @values[label_set].observe(value)
+          }
+        end
+      end
+
+      def values
+        if @redis.present?
+          all = @redis.hgetall(name)
+          all.map do |key, value|
+            [Oj.load(key).symbolize_keys, ValueInRedis.new(value)]
+          end.to_h
+        else
+          synchronize do
+            @values.each_with_object({}) do |(labels, value), memo|
+              memo[labels] = value
+            end
+          end
+        end
       end
 
       private
-
-      def default
-        Value.new(@buckets)
-      end
 
       def sorted?(bucket)
         bucket.each_cons(2).all? { |i, j| i <= j }
